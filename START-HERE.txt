@@ -1,0 +1,109 @@
+NEXUS — Discord bot
+===================
+
+WHAT'S IN THIS FOLDER
+  src/            the bot (98 commands, 15 modules)
+  scripts/        offline tests — no Discord token needed
+  Dockerfile      ships Node + ffmpeg + yt-dlp so music works
+  render.yaml     one-click Render blueprint
+  README.md       full docs (features, env vars, commands)
+  .env.example    copy to .env and fill in
+
+
+IMPORTANT: RENDER DOES NOT ACCEPT ZIP UPLOADS
+---------------------------------------------
+Render deploys from a Git repository (GitHub / GitLab / Bitbucket) or a Docker
+image. There is no "upload zip" button. So the zip goes to GitHub first:
+
+  1. Unzip this folder.
+  2. cd nexus-bot
+  3. git init && git add . && git commit -m "init"
+  4. Create an EMPTY repo on github.com (no README, no .gitignore).
+  5. git remote add origin https://github.com/YOURNAME/nexus-bot.git
+     git push -u origin main
+  6. Render -> New -> Blueprint -> pick that repo (it reads render.yaml).
+     OR Render -> New -> Web Service -> Docker -> pick the repo.
+
+That is the whole detour. Roughly two minutes of clicking.
+
+
+BEFORE YOU DEPLOY — GET THESE FROM DISCORD
+------------------------------------------
+discord.com/developers/applications -> New Application
+
+  DISCORD_CLIENT_ID   General Information -> Application ID
+  DISCORD_TOKEN       Bot -> Reset Token (only shown once)
+
+  Bot -> Privileged Gateway Intents -> turn ON:
+      [x] SERVER MEMBERS INTENT
+      [x] MESSAGE CONTENT INTENT
+      [x] PRESENCE INTENT
+
+  Without those intents, joins/leaves, automod, XP and autoresponders silently
+  do nothing. This is the #1 "why isn't it working" cause.
+
+Then OAuth2 -> URL Generator -> scopes: bot + applications.commands
+     permissions: Administrator
+     Open the URL and invite the bot.
+     Drag the bot's role ABOVE every role it has to manage.
+
+
+RENDER SETTINGS THAT MATTER
+---------------------------
+  * Use the "starter" plan, NOT free.
+    Free plan has no persistent disk, so your database wipes on every deploy.
+  * Add a Disk: name nexus-data, mount path /data, 1 GB.
+  * Set DB_PATH=/data/bot.db and PORT=8080.
+  * Health check path: /health   (already in render.yaml)
+
+The included render.yaml does all of the above automatically if you use
+Blueprint. You only need to paste the two Discord values as secrets.
+
+
+AFTER THE FIRST DEPLOY
+----------------------
+Register the slash commands. Run this locally, from this folder:
+
+  npm install
+  cp .env.example .env      # fill in DISCORD_TOKEN, DISCORD_CLIENT_ID, GUILD_IDS
+  npm run deploy:commands
+
+GUILD_IDS = your server ID (right-click server -> Copy Server ID, needs
+Developer Mode on). With it set, commands appear instantly. Without it they go
+global and Discord can take up to an hour.
+
+Then in your server, run once:
+
+  /setlogs modlog:#mod-log messages:#message-log members:#member-log
+  /setwelcome channel:#welcome
+  /autorole human:@Member
+  /automod toggle module:"Automod (master switch)" state:true
+  /ticketconfig category:"🎫 Support" staff:@Staff log:#ticket-logs
+  /ticketpanel
+  /settings          <- verify everything at a glance
+
+
+SANITY CHECK BEFORE YOU PUSH (optional, 20 seconds)
+---------------------------------------------------
+  npm install
+  npm test
+
+Should print:
+  All checks passed.
+  Smoke test passed (57 assertions).
+  47 command executions passed.
+
+If those pass, the code is structurally sound. Actual Discord behaviour still
+depends on your intents/permissions being right.
+
+
+KNOWN ROUGH EDGES (read once, saves an hour)
+--------------------------------------------
+  * Music needs the Dockerfile. Render will use it automatically because
+    render.yaml says runtime: docker. If you deploy as a plain Node service
+    instead, ffmpeg/yt-dlp are missing and /play will say so.
+  * yt-dlp goes stale. Rebuild the service (Manual Deploy -> Clear build cache
+    & deploy) if /play suddenly stops working.
+  * If a slash command errors, the bot replies with the error message in an
+    ephemeral embed. Send me that text and I'll fix it.
+  * Database backup = copy /data/bot.db off the disk.

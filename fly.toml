@@ -1,0 +1,29 @@
+# Fly.io config. Create the volume first:
+#   fly volumes create nexus_data --size 1
+# Then: fly secrets set DISCORD_TOKEN=... DISCORD_CLIENT_ID=...
+app = "nexus-bot"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DB_PATH = "/data/bot.db"
+  PORT = "8080"
+  NODE_ENV = "production"
+
+[[mounts]]
+  source = "nexus_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

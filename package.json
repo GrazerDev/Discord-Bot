@@ -1,0 +1,27 @@
+{
+  "name": "nexus-bot",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A batteries-included Discord bot: moderation, automod, logging, levels, economy, music, tickets, giveaways, reaction roles, suggestions, tags and more.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy:commands": "node src/deploy-commands.js",
+    "check": "node scripts/validate.js",
+    "test:db": "node scripts/smoke.js",
+    "test:cmds": "node scripts/test-commands.js",
+    "test": "npm run check && npm run test:db && npm run test:cmds"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.18.0",
+    "better-sqlite3": "^11.10.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "opusscript": "^0.1.1"
+  }
+}

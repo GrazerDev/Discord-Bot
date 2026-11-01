@@ -1,0 +1,38 @@
+# Render blueprint — deploy with "New → Blueprint" and point it at your repo.
+# Bubble plan: the free plan has no persistent disk, so your database resets on
+# every deploy. Use "starter" with a disk, or point DB_PATH at Postgres later.
+services:
+  - type: web
+    name: nexus-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: nexus-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DB_PATH
+        value: /data/bot.db
+      # PORT is injected by Render at runtime — do not pin it here.
+      - key: PRESENCE
+        value: /help • Nexus
+      - key: MUSIC_ENABLED
+        value: true
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: GUILD_IDS
+        sync: false
+      - key: OWNER_IDS
+        sync: false
+      - key: AI_BASE_URL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
