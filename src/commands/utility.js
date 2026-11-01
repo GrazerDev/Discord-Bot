@@ -654,10 +654,10 @@ const commands = [
       .setDescription('Post a custom embed in a channel')
       .setDefaultMemberPermissions(P.ManageGuild)
       .setDMPermission(false)
+      .addStringOption((o) => o.setName('description').setDescription('Body text of the embed').setRequired(true).setMaxLength(4000))
       .addChannelOption((o) =>
         o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText),
       )
-      .addStringOption((o) => o.setName('description').setDescription('Body text of the embed').setRequired(true).setMaxLength(4000))
       .addStringOption((o) => o.setName('title').setDescription('Embed title').setMaxLength(250))
       .addStringOption((o) => o.setName('color').setDescription('Hex colour, e.g. #5865f2').setMaxLength(20))
       .addStringOption((o) => o.setName('footer').setDescription('Footer text').setMaxLength(200))

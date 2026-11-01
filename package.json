@@ -1,6 +1,6 @@
 {
   "name": "nexus-bot",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "A batteries-included Discord bot: moderation, automod, logging, levels, economy, music, tickets, giveaways, reaction roles, suggestions, tags and more.",
   "type": "module",

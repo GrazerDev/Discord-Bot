@@ -470,42 +470,36 @@ const commands = [
           .setDescription('Seconds between XP gains')
           .addIntegerOption((o) => o.setName('seconds').setDescription('5-3600').setRequired(true).setMinValue(5).setMaxValue(3600)),
       )
-      .addSubcommandGroup((g) =>
-        g
-          .setName('reward')
-          .setDescription('Roles awarded at a level')
-          .addSubcommand((s) =>
-            s
-              .setName('add')
-              .setDescription('Add a level reward')
-              .addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1).setMaxValue(500))
-              .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)),
-          )
-          .addSubcommand((s) =>
-            s
-              .setName('remove')
-              .setDescription('Remove a level reward')
-              .addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)),
-          )
-          .addSubcommand((s) => s.setName('list').setDescription('List level rewards')),
-      ),
+      .addSubcommand((s) =>
+        s
+          .setName('reward-add')
+          .setDescription('Add a role reward for reaching a level')
+          .addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1).setMaxValue(500))
+          .addRoleOption((o) => o.setName('role').setDescription('Role').setRequired(true)),
+      )
+      .addSubcommand((s) =>
+        s
+          .setName('reward-remove')
+          .setDescription('Remove a level reward')
+          .addIntegerOption((o) => o.setName('level').setDescription('Level').setRequired(true).setMinValue(1)),
+      )
+      .addSubcommand((s) => s.setName('reward-list').setDescription('List level rewards')),
     async execute(interaction) {
-      const group = interaction.options.getSubcommandGroup(false);
       const sub = interaction.options.getSubcommand();
       const guildId = interaction.guild.id;
 
-      if (group === 'reward') {
-        if (sub === 'add') {
-          const level = interaction.options.getInteger('level');
-          const role = interaction.options.getRole('role');
-          db.prepare('INSERT INTO level_rewards (guild_id, level, role_id) VALUES (?, ?, ?) ON CONFLICT(guild_id, level) DO UPDATE SET role_id = excluded.role_id')
-            .run(guildId, level, role.id);
-          return interaction.editReply({ embeds: [ok(`Members reaching level **${level}** will get ${role}.`)] });
-        }
-        if (sub === 'remove') {
-          db.prepare('DELETE FROM level_rewards WHERE guild_id = ? AND level = ?').run(guildId, interaction.options.getInteger('level'));
-          return interaction.editReply({ embeds: [ok('Reward removed.')] });
-        }
+      if (sub === 'reward-add') {
+        const level = interaction.options.getInteger('level');
+        const role = interaction.options.getRole('role');
+        db.prepare('INSERT INTO level_rewards (guild_id, level, role_id) VALUES (?, ?, ?) ON CONFLICT(guild_id, level) DO UPDATE SET role_id = excluded.role_id')
+          .run(guildId, level, role.id);
+        return interaction.editReply({ embeds: [ok(`Members reaching level **${level}** will get ${role}.`)] });
+      }
+      if (sub === 'reward-remove') {
+        db.prepare('DELETE FROM level_rewards WHERE guild_id = ? AND level = ?').run(guildId, interaction.options.getInteger('level'));
+        return interaction.editReply({ embeds: [ok('Reward removed.')] });
+      }
+      if (sub === 'reward-list') {
         const rows = db.prepare('SELECT * FROM level_rewards WHERE guild_id = ? ORDER BY level ASC').all(guildId);
         return interaction.editReply({
           embeds: [embed({ title: 'Level rewards', description: rows.length ? rows.map((r) => `**Level ${r.level}** → <@&${r.role_id}>`).join('\n') : '*none*' })],
