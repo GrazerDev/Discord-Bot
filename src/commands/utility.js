@@ -648,6 +648,63 @@ const commands = [
       });
     },
   },
+  {
+    data: new SlashCommandBuilder()
+      .setName('embed')
+      .setDescription('Post a custom embed in a channel')
+      .setDefaultMemberPermissions(P.ManageGuild)
+      .setDMPermission(false)
+      .addChannelOption((o) =>
+        o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText),
+      )
+      .addStringOption((o) => o.setName('description').setDescription('Body text of the embed').setRequired(true).setMaxLength(4000))
+      .addStringOption((o) => o.setName('title').setDescription('Embed title').setMaxLength(250))
+      .addStringOption((o) => o.setName('color').setDescription('Hex colour, e.g. #5865f2').setMaxLength(20))
+      .addStringOption((o) => o.setName('footer').setDescription('Footer text').setMaxLength(200))
+      .addStringOption((o) => o.setName('image').setDescription('Large image URL').setMaxLength(500))
+      .addStringOption((o) => o.setName('thumbnail').setDescription('Thumbnail URL').setMaxLength(500))
+      .addStringOption((o) => o.setName('content').setDescription('Plain text above the embed (mentions work)').setMaxLength(1500))
+      .addBooleanOption((o) => o.setName('timestamp').setDescription('Show the current time in the embed')),
+    async execute(interaction) {
+      const target = interaction.options.getChannel('channel') ?? interaction.channel;
+      if (!target?.isTextBased()) return interaction.editReply({ embeds: [fail('Pick a text channel.')] });
+
+      const rawColor = interaction.options.getString('color');
+      let color = null;
+      if (rawColor) {
+        if (rawColor.trim().toLowerCase() === 'random') color = Math.floor(Math.random() * 0xffffff);
+        else {
+          const m = /^#?([0-9a-fA-F]{6})$/.exec(rawColor.trim());
+          if (!m) return interaction.editReply({ embeds: [fail('Colour must be hex like `#5865f2`, or `random`.')] });
+          color = parseInt(m[1], 16);
+        }
+      }
+
+      const isUrl = (v) => /^https?:\/\/\S+$/.test(v ?? '');
+      const image = interaction.options.getString('image');
+      const thumbnail = interaction.options.getString('thumbnail');
+      if (image && !isUrl(image)) return interaction.editReply({ embeds: [fail('`image` must be a full http(s) URL.')] });
+      if (thumbnail && !isUrl(thumbnail)) return interaction.editReply({ embeds: [fail('`thumbnail` must be a full http(s) URL.')] });
+
+      const content = interaction.options.getString('content');
+      await target.send({
+        ...(content ? { content } : {}),
+        embeds: [
+          embed({
+            title: interaction.options.getString('title') ?? undefined,
+            description: interaction.options.getString('description'),
+            color: color ?? C.brand,
+            footer: interaction.options.getString('footer') ?? undefined,
+            image: image ?? undefined,
+            thumbnail: thumbnail ?? undefined,
+            timestamp: interaction.options.getBoolean('timestamp') ?? false,
+          }),
+        ],
+      });
+
+      return interaction.editReply({ embeds: [ok(`Posted in ${target}.`)] });
+    },
+  },
 ];
 
 const components = {

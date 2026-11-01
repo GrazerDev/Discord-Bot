@@ -214,6 +214,23 @@ CREATE TABLE IF NOT EXISTS suggestions (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ticket_types (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id         TEXT NOT NULL,
+  key              TEXT NOT NULL,
+  label            TEXT NOT NULL,
+  title            TEXT,
+  description      TEXT,
+  emoji            TEXT,
+  color            TEXT,
+  category_id      TEXT,
+  staff_role       TEXT,
+  name_format      TEXT,
+  panel_description TEXT,
+  position         INTEGER DEFAULT 0,
+  UNIQUE (guild_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS tickets (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   guild_id   TEXT NOT NULL,
@@ -275,6 +292,35 @@ export const db = new Database(config.dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.exec(SCHEMA);
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Migrations. CREATE TABLE IF NOT EXISTS never touches an existing table, so
+ * new columns are added here. Safe to run on every boot.
+ * ──────────────────────────────────────────────────────────────────────────── */
+function ensureColumns(table, columns) {
+  const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  for (const [name, def] of Object.entries(columns)) {
+    if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def}`);
+  }
+}
+
+ensureColumns('guilds', {
+  ticket_panel_title: 'TEXT',
+  ticket_panel_description: 'TEXT',
+  ticket_panel_color: 'TEXT',
+  ticket_panel_style: "TEXT DEFAULT 'buttons'",
+  ticket_panel_footer: 'TEXT',
+  ticket_name_format: "TEXT DEFAULT 'ticket-{count:4}'",
+  ticket_open_message: 'TEXT',
+  ticket_closed_message: 'TEXT',
+  ticket_ping_staff: 'INTEGER DEFAULT 1',
+  ticket_dm_transcript: 'INTEGER DEFAULT 0',
+});
+
+ensureColumns('tickets', {
+  type: "TEXT DEFAULT 'default'",
+  priority: 'TEXT',
+});
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Guild settings helpers

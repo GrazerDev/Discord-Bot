@@ -1,6 +1,14 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { config } from '../config.js';
-import { GuildMusic, checkBinaries, formatTrack, loadVoice, resolveTracks } from '../lib/music.js';
+import {
+  GuildMusic,
+  checkBinaries,
+  diagnose,
+  formatTrack,
+  loadVoice,
+  resolveTracks,
+} from '../lib/music.js';
+import { PermissionFlagsBits as P } from 'discord.js';
 import { embed, ok, fail, field, C } from '../lib/ui.js';
 import { formatDuration, truncate } from '../lib/helpers.js';
 
@@ -232,6 +240,47 @@ const commands = [
       if (position > queue.tracks.length) return interaction.editReply({ embeds: [fail('There is no track at that position.')] });
       const [removed] = queue.tracks.splice(position - 1, 1);
       return interaction.editReply({ embeds: [ok(`🗑️ Removed **${truncate(removed.title, 100)}**.`)] });
+    },
+  },
+  {
+    data: new SlashCommandBuilder()
+      .setName('musicdebug')
+      .setDescription('Diagnose why music is silent (checks yt-dlp, YouTube access and the audio pipeline)')
+      .setDefaultMemberPermissions(P.ManageGuild)
+      .setDMPermission(false),
+    async execute(interaction) {
+      await interaction.editReply({ embeds: [embed({ description: 'Running diagnostics — this takes about 10 seconds…', color: C.muted, timestamp: false })] });
+      const d = await diagnose();
+
+      const verdict = [];
+      if (!d.binaries.ok) verdict.push('❌ yt-dlp or ffmpeg is missing on this host. Deploy with the Dockerfile.');
+      else if (d.error && /sign in to confirm|not a bot|cookies|429/i.test(d.error))
+        verdict.push('❌ **YouTube is blocking this host’s IP** (bot check). Datacenter IPs like Render’s get challenged. Fix: supply cookies via `--cookies` or run music somewhere with a residential IP.');
+      else if (d.error) verdict.push(`❌ ${d.error}`);
+      else if (d.bytes === 0) verdict.push('❌ The pipeline produced **zero audio bytes**. yt-dlp could not deliver a stream — almost always the YouTube bot check above, or an age/region restriction.');
+      else if (d.bytes < 20000) verdict.push(`⚠️ Only ${d.bytes} bytes arrived — the stream is stalling. Likely CPU starvation (free instances have 0.1 CPU) or a slow network path.`);
+      else verdict.push('✅ Audio is flowing. If you still cannot hear it, the player is fine — check that you are not deafened and that the bot’s volume is above 0.');
+
+      const stderr = d.stderr ? [d.stderr.ytdlpErr, d.stderr.ffmpegErr].filter(Boolean).join('\n').trim() : '';
+
+      return interaction.editReply({
+        embeds: [
+          embed({
+            title: '🎧 Music diagnostics',
+            color: d.bytes > 20000 ? C.ok : C.error,
+            fields: [
+              field('Verdict', verdict.join('\n'), false),
+              field('yt-dlp', d.version ?? (d.binaries.ytdlp ? 'present' : 'missing')),
+              field('ffmpeg', d.binaries.ffmpeg ? 'present' : 'missing'),
+              field('Pipeline', d.streamType === 'raw' ? 'PCM + opusscript (CPU heavy)' : 'Ogg Opus (no JS encoding)'),
+              field('Test search', d.search ? truncate(d.search, 80) : 'failed'),
+              field('Audio bytes in 7s', String(d.bytes)),
+              ...(stderr ? [field('Last errors', `\`\`\`\n${truncate(stderr, 700)}\n\`\`\``, false)] : []),
+            ],
+            footer: { text: 'Fix YouTube blocks with MUSIC_STREAM=raw as a fallback, or supply cookies' },
+          }),
+        ],
+      });
     },
   },
   {

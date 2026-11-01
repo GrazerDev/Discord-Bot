@@ -36,6 +36,9 @@ export const config = {
     maxQueue: Number(process.env.MUSIC_MAX_QUEUE || 200),
     ytdlp: process.env.YTDLP_PATH || 'yt-dlp',
     ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
+    // 'ogg' = let ffmpeg produce Opus directly (cheap, no JS encoding).
+    // 'raw' = decode to PCM in ffmpeg and encode in JS via opusscript (CPU heavy).
+    stream: (process.env.MUSIC_STREAM || 'ogg').toLowerCase(),
   },
 
   ai: {

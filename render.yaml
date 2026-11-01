@@ -1,27 +1,36 @@
-# Render blueprint — deploy with "New → Blueprint" and point it at your repo.
-# Bubble plan: the free plan has no persistent disk, so your database resets on
-# every deploy. Use "starter" with a disk, or point DB_PATH at Postgres later.
+# Render blueprint — free tier, no disk required.
+#
+# Free Render has no persistent storage, so the bot keeps its SQLite database in
+# a private GitHub repo instead (see BACKUP_* below). Worst case on a restart you
+# lose roughly the last 10 minutes of XP/coins instead of everything.
+#
+# If you later move to the paid "starter" plan, uncomment the disk block, set
+# plan: starter, and delete the BACKUP_* variables.
 services:
   - type: web
     name: nexus-bot
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     region: frankfurt
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: nexus-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: DB_PATH
         value: /data/bot.db
-      # PORT is injected by Render at runtime — do not pin it here.
       - key: PRESENCE
         value: /help • Nexus
       - key: MUSIC_ENABLED
         value: true
+      - key: MUSIC_STREAM
+        value: ogg
+      - key: BACKUP_PATH
+        value: bot.db
+      - key: BACKUP_BRANCH
+        value: main
+      - key: BACKUP_INTERVAL_MIN
+        value: 10
+      # ── secrets you paste in the Render dashboard ──────────────────────────
       - key: DISCORD_TOKEN
         sync: false
       - key: DISCORD_CLIENT_ID
@@ -30,9 +39,18 @@ services:
         sync: false
       - key: OWNER_IDS
         sync: false
+      - key: BACKUP_REPO
+        sync: false
+      - key: BACKUP_TOKEN
+        sync: false
+      # ── optional ───────────────────────────────────────────────────────────
       - key: AI_BASE_URL
         sync: false
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
         sync: false
+    # disk:
+    #   name: nexus-data
+    #   mountPath: /data
+    #   sizeGB: 1

@@ -79,8 +79,15 @@ export async function resolveTracks(query, requester) {
   return data.entries.filter((e) => e && (e.id || e.webpage_url)).slice(0, 50).map(toTrack);
 }
 
-/* ── audio pipeline: yt-dlp → ffmpeg → raw PCM ───────────────────────────── */
-function createPCMStream(url) {
+/* ── audio pipeline: yt-dlp → ffmpeg → Opus ───────────────────────────────── */
+/**
+ * Default path lets ffmpeg emit Ogg Opus, which Node forwards to Discord as
+ * packets — no JavaScript encoding at all, so it survives on a 0.1 CPU free
+ * instance. MUSIC_STREAM=raw switches to PCM + opusscript if that ever misbehaves.
+ */
+function createAudioStream(url, notify = () => {}) {
+  const useRaw = config.music.stream === 'raw';
+
   const ytdlp = spawn(config.music.ytdlp, [
     '-f', 'bestaudio/best',
     '--no-playlist',
@@ -89,21 +96,40 @@ function createPCMStream(url) {
     '-o', '-',
     url,
   ]);
-  const ffmpeg = spawn(config.music.ffmpeg, [
-    '-i', 'pipe:0',
-    '-analyzeduration', '0',
-    '-loglevel', '0',
-    '-ac', '2',
-    '-f', 's16le',
-    '-ar', '48000',
-    'pipe:1',
-  ]);
+
+  const ffmpegArgs = useRaw
+    ? ['-i', 'pipe:0', '-analyzeduration', '0', '-loglevel', 'error', '-vn', '-ac', '2', '-f', 's16le', '-ar', '48000', 'pipe:1']
+    : ['-i', 'pipe:0', '-analyzeduration', '0', '-loglevel', 'error', '-vn', '-c:a', 'libopus', '-b:a', '96k', '-f', 'ogg', 'pipe:1'];
+
+  const ffmpeg = spawn(config.music.ffmpeg, ffmpegArgs);
+
+  let ytdlpErr = '';
+  let ffmpegErr = '';
+  ytdlp.stderr.on('data', (d) => { ytdlpErr = (ytdlpErr + d).slice(-2000); });
+  ffmpeg.stderr.on('data', (d) => { ffmpegErr = (ffmpegErr + d).slice(-2000); });
 
   ytdlp.stdout.pipe(ffmpeg.stdin);
-  ytdlp.on('error', () => ffmpeg.stdin.destroy());
-  ffmpeg.on('error', () => {});
-  ytdlp.stderr.on('data', () => {});
-  ffmpeg.stderr.on('data', () => {});
+
+  let reported = false;
+  const report = (what, detail) => {
+    if (reported) return;
+    reported = true;
+    const hint = /sign in to confirm|not a bot|cookies|429/i.test(detail)
+      ? '\nYouTube is challenging this host’s IP. Music from datacenter IPs often needs cookies — see /musicdebug.'
+      : '';
+    console.warn(`[music] ${what}: ${detail.split('\n').slice(-2).join(' ')}`);
+    notify(`⚠️ **${what}**\n\`\`\`\n${detail.slice(-400)}\n\`\`\`${hint}`);
+  };
+
+  ytdlp.on('error', (err) => report('yt-dlp could not start', err.message));
+  ffmpeg.on('error', (err) => report('ffmpeg could not start', err.message));
+  ytdlp.on('close', (code) => {
+    if (code !== 0) report(`yt-dlp exited with code ${code}`, ytdlpErr.trim() || 'no output');
+  });
+  ffmpeg.on('close', (code) => {
+    if (code !== 0 && code !== null) report(`ffmpeg exited with code ${code}`, ffmpegErr.trim() || 'no output');
+  });
+  ffmpeg.stdin.on('error', () => {});
 
   const kill = () => {
     try { ytdlp.kill('SIGKILL'); } catch { /* noop */ }
@@ -111,7 +137,48 @@ function createPCMStream(url) {
   };
   ffmpeg.stdout.on('close', kill);
 
-  return ffmpeg.stdout;
+  return { stream: ffmpeg.stdout, useRaw, kill, stderr: () => ({ ytdlpErr, ffmpegErr }) };
+}
+
+/* ── diagnostics for /musicdebug ──────────────────────────────────────────── */
+export async function diagnose() {
+  const out = { binaries: await checkBinaries(), version: null, search: null, url: null, streamType: config.music.stream, bytes: 0, error: null, stderr: null };
+
+  try {
+    out.version = (await runYtdlp(['--version'])).trim();
+  } catch (err) {
+    out.error = `yt-dlp --version failed: ${err.message}`;
+    return out;
+  }
+
+  try {
+    const raw = await runYtdlp(['-J', '--no-warnings', '--flat-playlist', '--no-playlist', 'ytsearch1:lofi hip hop']);
+    const data = JSON.parse(raw);
+    const entry = data.entries?.[0] ?? data;
+    out.search = entry?.title ?? null;
+    out.url = entry?.webpage_url ?? entry?.url ?? null;
+  } catch (err) {
+    out.error = `search failed: ${err.message}`;
+    return out;
+  }
+
+  if (!out.url) return out;
+
+  const probe = createAudioStream(out.url, () => {});
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 7000);
+    probe.stream.once('data', (chunk) => {
+      out.bytes += chunk.length;
+      clearTimeout(timer);
+      resolve();
+    });
+    probe.stream.once('end', () => { clearTimeout(timer); resolve(); });
+    probe.stream.once('error', () => { clearTimeout(timer); resolve(); });
+  });
+  out.bytes = out.bytes || 0;
+  out.stderr = probe.stderr();
+  probe.kill();
+  return out;
 }
 
 /* ── per-guild queue ─────────────────────────────────────────────────────── */
@@ -199,9 +266,11 @@ export class GuildMusic {
     this.current = track;
     this.playing = true;
     try {
-      const stream = createPCMStream(track.url);
-      this.resource = v.createAudioResource(stream, {
-        inputType: v.StreamType.Raw,
+      const pipeline = createAudioStream(track.url, (message) => {
+        this.textChannel?.send({ content: message }).catch(() => {});
+      });
+      this.resource = v.createAudioResource(pipeline.stream, {
+        inputType: pipeline.useRaw ? v.StreamType.Raw : v.StreamType.OggOpus,
         inlineVolume: true,
       });
       this.resource.volume?.setVolume(this.volume / 100);

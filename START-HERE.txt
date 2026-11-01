@@ -50,14 +50,60 @@ Then OAuth2 -> URL Generator -> scopes: bot + applications.commands
 
 RENDER SETTINGS THAT MATTER
 ---------------------------
-  * Use the "starter" plan, NOT free.
-    Free plan has no persistent disk, so your database wipes on every deploy.
-  * Add a Disk: name nexus-data, mount path /data, 1 GB.
-  * Set DB_PATH=/data/bot.db and PORT=8080.
-  * Health check path: /health   (already in render.yaml)
+This zip is pre-configured for Render's FREE plan:
 
-The included render.yaml does all of the above automatically if you use
-Blueprint. You only need to paste the two Discord values as secrets.
+  * plan: free, region: frankfurt, Docker runtime
+  * health check path: /health   (UptimeRobot can ping this)
+  * DB_PATH=/data/bot.db
+
+The free plan has NO persistent disk, which normally means your database wipes
+on every deploy. That is handled by the backup system below, so you do not have
+to pay.
+
+ONE EXTRA STEP — KEEP YOUR DATA (free, no card, ~2 minutes)
+-----------------------------------------------------------
+Without this, every redeploy silently resets all levels, coins, warnings, tags
+and your /settings config.
+
+  1. On GitHub create an EMPTY PRIVATE repo called "nexus-backup".
+  2. Open github.com/settings/tokens?type=beta  ->  Generate new token
+        Repository access : Only select repositories -> nexus-backup
+        Permissions       : Contents ............... Read and write
+        Expiration        : 90 days
+     Copy the github_pat_... string.
+  3. In Render -> your service -> Environment, add:
+        BACKUP_REPO   = YOURNAME/nexus-backup
+        BACKUP_TOKEN  = github_pat_...
+        BACKUP_INTERVAL_MIN = 10
+  4. Redeploy.
+
+How it works: on boot the bot downloads the newest snapshot if it has no local
+database; every 10 minutes it pushes a consistent copy; on shutdown it pushes
+one last time. Worst case you lose ~10 minutes of XP/coins instead of all of it.
+
+Check it is working — the Render log should show:
+
+  [backup] every 10 min -> YOURNAME/nexus-backup/bot.db (main)
+  [backup] snapshot #1 pushed (180 KB, interval)
+
+The token can only read/write files in that one backup repo. It cannot touch
+your code repo.
+
+If you ever switch to the paid "starter" plan, delete the BACKUP_* variables,
+add a disk mounted at /data, and set plan: starter in render.yaml.
+
+KEEPING THE BOT AWAKE
+---------------------
+Free Render services sleep after 15 minutes of inactivity, which disconnects the
+bot. You said you have UptimeRobot, so:
+
+  Monitor type : HTTP(s)
+  URL          : https://YOUR-SERVICE.onrender.com/health
+  Interval     : 5 minutes
+  Keyword      : exists -> "online"
+
+The keyword check matters: /health returns {"status":"starting"} while booting
+and only says "online" once Discord is actually connected.
 
 
 AFTER THE FIRST DEPLOY
